@@ -1,20 +1,23 @@
-# main.py
+# main.py - VERSION FINAL DENGAN SESSION SEPARATION DAN LOCALIZATION
 import subprocess
 import pandas as pd
 import os
 import time
 import sys
 import csv
+import platform
 from datetime import datetime
 
 # Import modules
 from colors import Colors, Icons
 from utils import *
-from config import PRODUCT_MAPPING, CSV_FILE, BC_FILE
+from config import PRODUCT_MAPPING, CSV_FILE, BC_FILE, CSV_FILE_COLOR, BC_FILE_COLOR
 from data_manager import DataManager
+from file_manager import FileManager
 from storage_extractor import extract_storage_capacity_real
 from color_detector import extract_device_color
 from color_selector import display_color_selection
+from localization import *
 
 class DeviceScanner:
     def __init__(self, data_manager):
@@ -37,12 +40,12 @@ class DeviceScanner:
                 udids = set(result.stdout.strip().splitlines())
                 return udids
         except Exception as e:
-            print_error(f"Error getting UDIDs: {e}")
+            print_error(f"{ERROR_GET_UDIDS}: {e}")
         return set()
     
     def extract_device_info_real(self, udid: str):
         """Extract REAL device information"""
-        print_info(f"Extracting device {udid[:8]}...")
+        print_info(f"{EXTRACTING_DEVICE} {udid[:8]}...")
         start_time = time.time()
         
         try:
@@ -70,7 +73,7 @@ class DeviceScanner:
             imei2 = ensure_full_imei(device_info.get('InternationalMobileEquipmentIdentity2', 'N/A'))
             
             if imei1 == 'N/A':
-                print_warning("IMEI not accessible")
+                print_warning(WARNING_IMEI_NOT_ACCESSIBLE)
                 return None
             
             # Get basic info
@@ -79,7 +82,7 @@ class DeviceScanner:
             region_info = device_info.get('RegionInfo', '')
             part = model_number + region_info if model_number or region_info else 'N/A'
             product_type = device_info.get('ProductType', 'N/A')
-            product_name = PRODUCT_MAPPING.get(product_type, f'Unknown ({product_type})')
+            product_name = PRODUCT_MAPPING.get(product_type, f'{UNKNOWN} ({product_type})')
             
             # Get storage (REAL only)
             storage = extract_storage_capacity_real(device_info, udid)
@@ -111,16 +114,17 @@ class DeviceScanner:
                 'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             
-            print_success(f"Extraction completed in {time.time() - start_time:.2f}s")
+            elapsed_time = time.time() - start_time
+            print_success(f"{EXTRACTION_COMPLETED} {elapsed_time:.2f}s")
             return info
             
         except Exception as e:
-            print_error(f"Extraction error: {e}")
+            print_error(f"{ERROR_EXTRACTION}: {e}")
             return None
     
     def shutdown_device(self, udid: str):
         """Shutdown the device"""
-        print_info(f"Shutting down device {udid[:8]}...")
+        print_info(f"{SHUTDOWN_DEVICE} {udid[:8]}...")
         try:
             subprocess.run(
                 ['idevicediagnostics', '-u', udid, 'shutdown'],
@@ -132,148 +136,85 @@ class DeviceScanner:
         except:
             pass
 
-class FileManager:
-    def __init__(self):
-        self.csv_file = CSV_FILE
-        self.bc_file = BC_FILE
-    
-    def save_device_info(self, device_info: dict):
-        """Save device information"""
-        try:
-            self._save_to_csv(device_info)
-            self._save_to_bc_excel(device_info)
-            print_success("Saved to both files")
-            return True
-        except Exception as e:
-            print_error(f"Save error: {e}")
-            return False
-    
-    def _save_to_csv(self, device_info: dict):
-        """Save to CSV file"""
-        data_row = [
-            device_info['imei1'],
-            device_info['imei2'],
-            device_info['serial'],
-            device_info['part'],
-            device_info['product_name'],
-            device_info['storage'],
-            device_info['color'],
-            device_info['model_id'],
-            device_info['upc'],
-            device_info['device_name'],
-            device_info['ios_version'],
-            device_info['timestamp']
-        ]
-        
-        file_exists = os.path.exists(self.csv_file)
-        
-        with open(self.csv_file, 'a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            
-            if not file_exists:
-                headers = [
-                    'IMEI1', 'IMEI2', 'Serial', 'Part', 'Product',
-                    'Storage', 'Color', 'ModelID', 'UPC',
-                    'DeviceName', 'iOSVersion', 'Timestamp'
-                ]
-                writer.writerow(headers)
-            
-            writer.writerow(data_row)
-        
-        print_success(f"Saved to {self.csv_file}")
-    
-    def _save_to_bc_excel(self, device_info: dict):
-        """Save to BC Excel file"""
-        df_new = pd.DataFrame([[
-            device_info['product_name'],
-            device_info['storage'],
-            device_info['color'],
-            device_info['imei1'],
-            device_info['imei2']
-        ]], columns=['Product Name', 'Storage', 'Color', 'IMEI1', 'IMEI2'])
-        
-        if os.path.exists(self.bc_file):
-            try:
-                df_existing = pd.read_excel(self.bc_file, engine='openpyxl')
-                df_combined = pd.concat([df_existing, df_new], ignore_index=True)
-            except:
-                df_combined = df_new
-        else:
-            df_combined = df_new
-        
-        with pd.ExcelWriter(self.bc_file, engine='openpyxl', mode='w') as writer:
-            df_combined.to_excel(writer, sheet_name='BC Data', index=False)
-        
-        print_success(f"Saved to {self.bc_file}")
-
 class iPhoneScannerApp:
     def __init__(self):
         self.data_manager = DataManager()
         self.device_scanner = DeviceScanner(self.data_manager)
-        self.file_manager = FileManager()
+        # FileManager akan diinisialisasi sesuai session type
+        self.file_manager = None
         self.running = False
     
     def display_banner(self):
         """Display application banner"""
         clear_screen()
-        print_header("iPhone Device Scanner Pro v5.2.0", 80)
-        print(f"\n{Colors.BRIGHT_CYAN}{Icons.DEVICE}  Version: 5.2.0 - Real Data Only")
-        print(f"{Icons.COMPUTER}  System: {platform.system()} {platform.release()}")
-        print(f"{Icons.CLOCK}  Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"{Icons.LIST}  Seen IMEIs: {len(self.data_manager.seen_imei)}")
-        print(f"{Icons.SAVE}  Output Files: {CSV_FILE} (CSV), {BC_FILE} (Excel)")
+        print_header(f"{APP_TITLE} v5.2.0", 80)
+        print(f"\n{Colors.BRIGHT_CYAN}{Icons.DEVICE}  {VERSION}: 5.2.0 - Real Data Only")
+        print(f"{Icons.COMPUTER}  {SYSTEM}: {platform.system()} {platform.release()}")
+        print(f"{Icons.CLOCK}  {TIME}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"{Icons.LIST}  {SEEN_IMEIS}: {len(self.data_manager.seen_imei)}")
+        
+        # Tampilkan kedua session files
+        print(f"{Icons.SAVE}  {SESSION_FILES}:")
+        print(f"    • {SESSION_NO_COLOR}: {CSV_FILE} (CSV), {BC_FILE} (Excel)")
+        print(f"    • {SESSION_WITH_COLOR}: {CSV_FILE_COLOR} (CSV), {BC_FILE_COLOR} (Excel)")
+        
         print(f"{Colors.BRIGHT_CYAN}{'─'*80}{Colors.RESET}")
     
     def display_menu(self):
         """Display main menu"""
-        print(f"\n{Colors.BRIGHT_WHITE}{Icons.LIST}  MAIN MENU{Colors.RESET}")
+        print(f"\n{Colors.BRIGHT_WHITE}{Icons.LIST}  {MENU_TITLE}{Colors.RESET}")
         print(f"{Colors.BRIGHT_CYAN}{'─'*50}{Colors.RESET}")
         
-        menu_options = [
-            ("1", "📱 Monitor & Extract", "Extract info (auto-detect color)"),
-            ("2", "🎨 Monitor & Extract + Color", "Extract + manual color selection"),
-            ("3", "📱⏻ Monitor + Shutdown", "Extract then shutdown device"),
-            ("4", "🎨 Monitor + Shutdown + Color", "Extract + color + shutdown"),
-            ("5", "🔍 Scan Current Devices", "Scan all connected devices"),
-            ("6", "🔍🔄 Scan with Reset", "Reset data first, then scan"),
-            ("7", "📋 View Seen IMEIs", "Show all processed IMEIs"),
-            ("8", "🗑️  Clear Seen IMEIs", "Reset seen IMEI list"),
-            ("9", "🗑️  Reset All Data", "Delete all output files and IMEI list"),
-            ("10", "🚪 Exit", "Close application")
-        ]
-        
-        for num, title, desc in menu_options:
-            print(f"{Colors.BRIGHT_GREEN}[{num}]{Colors.RESET} {Colors.BOLD}{title:<30}{Colors.RESET} {Colors.DIM}{desc}{Colors.RESET}")
-        
+        # Menggunakan MENU_OPTIONS dari localization.py
+        for key in sorted(MENU_OPTIONS.keys(), key=lambda x: int(x)):
+            title, desc = MENU_OPTIONS[key]
+            print(f"{Colors.BRIGHT_GREEN}[{key}]{Colors.RESET} {Colors.BOLD}{title:<30}{Colors.RESET} {Colors.DIM}{desc}{Colors.RESET}")
         
         print(f"{Colors.BRIGHT_CYAN}{'─'*50}{Colors.RESET}")
     
-    def scan_current_devices(self):
+    def scan_current_devices(self, manual_color=False):
         """Scan all currently connected devices"""
-        print_header("SCAN CURRENT DEVICES")
+        print_header(SCAN_CURRENT_DEVICES)
         
         devices = self.device_scanner.get_connected_devices()
         if not devices:
-            print_warning("No devices connected")
+            print_warning(NO_DEVICES_CONNECTED)
             time.sleep(2)
             self.return_to_menu()
             return
         
-        print_success(f"Found {len(devices)} device(s)")
+        print_success(f"{FOUND_DEVICES} {len(devices)} {DEVICE_SINGULAR_PLURAL}")
+        
+        # Inisialisasi FileManager dengan session type
+        self.file_manager = FileManager(use_color_session=manual_color)
         
         for i, udid in enumerate(devices, 1):
-            print(f"\n{Colors.BRIGHT_WHITE}{Icons.DEVICE} [{i}/{len(devices)}] Device: {udid[:8]}...{Colors.RESET}")
+            print(f"\n{Colors.BRIGHT_WHITE}{Icons.DEVICE} [{i}/{len(devices)}] {SCANNING_DEVICE} {udid[:8]}...{Colors.RESET}")
             info = self.device_scanner.extract_device_info_real(udid)
             
             if info:
                 print_device_info(info)
                 
                 if info['imei1'] != 'N/A' and info['imei1'] not in self.data_manager.seen_imei:
-                    if input(f"\n{Colors.BRIGHT_YELLOW}Save this device? (y/n): {Colors.RESET}").lower() == 'y':
-                        self.file_manager.save_device_info(info)
-                        self.data_manager.seen_imei.add(info['imei1'])
-                        self.data_manager.save_seen_imei()
-                        print_success(f"{Icons.TROPHY} DEVICE SAVED!")
+                    if manual_color:
+                        # Pilih warna manual jika mode warna diaktifkan
+                        selected_color = display_color_selection(info['product_name'])
+                        info['color'] = selected_color
+                    
+                    # Konfirmasi save
+                    confirm = input(f"\n{Colors.BRIGHT_YELLOW}{SAVE_CONFIRMATION} {Colors.RESET}").lower()
+                    if confirm == 'y' or confirm == '':
+                        if self.file_manager.save_device_info(info):
+                            # Update data_manager dengan session yang sesuai
+                            if manual_color:
+                                self.data_manager.load_seen_imei(color_session=True)
+                                self.data_manager.seen_imei.add(info['imei1'])
+                                self.data_manager.save_seen_imei(color_session=True)
+                            else:
+                                self.data_manager.seen_imei.add(info['imei1'])
+                                self.data_manager.save_seen_imei()
+                            
+                            print_success(DEVICE_SAVED)
         
         self.return_to_menu()
     
@@ -281,19 +222,34 @@ class iPhoneScannerApp:
         """Monitor for device connections"""
         self.running = True
         
+        # Inisialisasi FileManager dengan session type
+        self.file_manager = FileManager(use_color_session=manual_color)
+        
+        # Load seen IMEI untuk session yang sesuai
+        if manual_color:
+            self.data_manager.seen_imei = self.data_manager.load_seen_imei(color_session=True)
+        else:
+            self.data_manager.seen_imei = self.data_manager.load_seen_imei(color_session=False)
+        
         mode_text = ""
         if manual_color:
-            mode_text += " + MANUAL COLOR"
+            mode_text += f" + {MANUAL_COLOR_MODE}"
         if auto_shutdown:
-            mode_text += " + SHUTDOWN"
+            mode_text += f" + {SHUTDOWN_MODE}"
         
-        print_header(f"DEVICE MONITORING{mode_text}")
-        print(f"\n{Colors.BRIGHT_WHITE}{Icons.INFO}  Instructions:{Colors.RESET}")
-        print(f"{Colors.DIM}  • Connect new iPhone via USB")
-        print(f"  • Information will be automatically extracted")
+        print_header(f"{DEVICE_MONITORING}{mode_text}")
+        print(f"\n{Colors.BRIGHT_WHITE}{Icons.INFO}  {INSTRUCTIONS}:{Colors.RESET}")
+        print(f"{Colors.DIM}  • {INSTRUCTION_CONNECT}")
+        
         if manual_color:
-            print(f"  • You will be prompted to select device color")
-        print(f"  • Press Ctrl+C to stop{Colors.RESET}")
+            print(f"  • {INSTRUCTION_COLOR_PROMPT}")
+        else:
+            print(f"  • {INSTRUCTION_AUTO_EXTRACT}")
+        
+        if auto_shutdown:
+            print(f"  • {INSTRUCTION_AUTO_SHUTDOWN}")
+        
+        print(f"  • {INSTRUCTION_STOP}{Colors.RESET}")
         print(f"\n{Colors.BRIGHT_CYAN}{'─'*80}{Colors.RESET}")
         
         previous_devices = set()
@@ -304,22 +260,22 @@ class iPhoneScannerApp:
                 
                 new_devices = current_devices - previous_devices
                 for udid in new_devices:
-                    print_success(f"New device detected: {udid[:8]}...")
+                    print_success(f"{NEW_DEVICE_DETECTED} {udid[:8]}...")
                     
                     info = self.device_scanner.extract_device_info_real(udid)
                     if info and info['imei1'] != 'N/A':
                         # Check if IMEI already exists
                         if info['imei1'] in self.data_manager.seen_imei:
-                            print_warning(f"⚠️  Device already scanned!")
+                            print_warning(DEVICE_ALREADY_SCANNED)
                             print(f"{Colors.BRIGHT_YELLOW}")
                             print(f"{'─'*60}")
-                            print(f"📱 Product: {info['product_name']}")
-                            print(f"📊 Storage: {info['storage']}")
-                            print(f"📋 IMEI 1: {info['imei1'][:8]}...{info['imei1'][-4:]}")
+                            print(f"{LABEL_PRODUCT}: {info['product_name']}")
+                            print(f"{LABEL_STORAGE}: {info['storage']}")
+                            print(f"{LABEL_IMEI1}: {info['imei1'][:8]}...{info['imei1'][-4:]}")
                             print(f"{'─'*60}")
                             print(f"{Colors.RESET}")
-                            print(f"{Colors.BRIGHT_CYAN}💡 This device has already been processed and saved.{Colors.RESET}")
-                            print(f"{Colors.BRIGHT_GREEN}✅ Please connect a DIFFERENT device to continue.{Colors.RESET}")
+                            print(f"{Colors.BRIGHT_CYAN}{DEVICE_ALREADY_PROCESSED}{Colors.RESET}")
+                            print(f"{Colors.BRIGHT_GREEN}{CONNECT_DIFFERENT_DEVICE}{Colors.RESET}")
                             print()
                         else:
                             # New device - process it
@@ -330,10 +286,15 @@ class iPhoneScannerApp:
                                 selected_color = display_color_selection(info['product_name'])
                                 info['color'] = selected_color
                             
-                            self.file_manager.save_device_info(info)
-                            self.data_manager.seen_imei.add(info['imei1'])
-                            self.data_manager.save_seen_imei()
-                            print_success(f"{Icons.TROPHY} DEVICE SAVED!")
+                            if self.file_manager.save_device_info(info):
+                                # Simpan IMEI ke session yang sesuai
+                                self.data_manager.seen_imei.add(info['imei1'])
+                                if manual_color:
+                                    self.data_manager.save_seen_imei(color_session=True)
+                                else:
+                                    self.data_manager.save_seen_imei()
+                                
+                                print_success(DEVICE_SAVED)
                             
                             if auto_shutdown:
                                 self.device_scanner.shutdown_device(udid)
@@ -342,8 +303,11 @@ class iPhoneScannerApp:
                 time.sleep(2)
                 
         except KeyboardInterrupt:
-            print(f"\n\n{Colors.BRIGHT_YELLOW}{Icons.STOP} Monitoring stopped{Colors.RESET}")
+            print(f"\n\n{Colors.BRIGHT_YELLOW}{Icons.STOP} {MONITORING_STOPPED}{Colors.RESET}")
             self.running = False
+        
+        # Reset ke default session setelah monitoring selesai
+        self.data_manager.seen_imei = self.data_manager.load_seen_imei(color_session=False)
         
         # Return to menu
         self.return_to_menu()
@@ -351,32 +315,33 @@ class iPhoneScannerApp:
     def return_to_menu(self):
         """Prompt user to return to menu"""
         print(f"\n{Colors.BRIGHT_CYAN}{'─'*80}{Colors.RESET}")
-        input(f"{Colors.BRIGHT_GREEN}Press ENTER to return to menu...{Colors.RESET}")
+        input(f"{Colors.BRIGHT_GREEN}{PRESS_ENTER_TO_RETURN}{Colors.RESET}")
         print(f"{Colors.BRIGHT_CYAN}{'─'*80}{Colors.RESET}\n")
     
     def scan_with_reset(self):
         """Scan current devices after resetting seen IMEIs"""
-        print_header("SCAN WITH RESET")
+        print_header(SCAN_WITH_RESET)
         
-        if input(f"{Colors.BRIGHT_YELLOW}This will reset the seen IMEI list. Continue? (y/n): {Colors.RESET}").lower() == 'y':
+        confirm = input(f"{Colors.BRIGHT_YELLOW}{RESET_CONFIRMATION} {Colors.RESET}").lower()
+        if confirm == 'y' or confirm == '':
             self.data_manager.seen_imei.clear()
             self.data_manager.save_seen_imei()
-            print_success("Seen IMEI list cleared")
+            print_success(SEEN_IMEI_CLEARED)
             time.sleep(1)
-            self.scan_current_devices()
+            self.scan_current_devices(manual_color=False)
         else:
-            print_warning("Scan with reset cancelled")
+            print_warning(SCAN_CANCELLED)
             self.return_to_menu()
             time.sleep(1)
     
     def view_seen_imeis(self):
         """Display all seen IMEIs"""
-        print_header("SEEN IMEIs")
+        print_header(VIEW_SEEN_IMEIS)
         
         if not self.data_manager.seen_imei:
-            print_warning("No IMEIs have been processed yet")
+            print_warning(NO_IMEIS_PROCESSED)
         else:
-            print(f"\n{Colors.BRIGHT_WHITE}Total IMEIs: {len(self.data_manager.seen_imei)}{Colors.RESET}\n")
+            print(f"\n{Colors.BRIGHT_WHITE}{TOTAL_IMEIS}: {len(self.data_manager.seen_imei)}{Colors.RESET}\n")
             for i, imei in enumerate(sorted(self.data_manager.seen_imei), 1):
                 print(f"{Colors.BRIGHT_GREEN}[{i:3d}]{Colors.RESET} {imei}")
         
@@ -384,48 +349,54 @@ class iPhoneScannerApp:
     
     def clear_seen_imeis(self):
         """Clear the seen IMEIs list"""
-        print_header("CLEAR SEEN IMEIs")
+        print_header(CLEAR_SEEN_IMEIS)
         
-        if input(f"{Colors.BRIGHT_YELLOW}Delete all {len(self.data_manager.seen_imei)} seen IMEIs? (y/n): {Colors.RESET}").lower() == 'y':
+        confirm = input(f"{Colors.BRIGHT_YELLOW}{DELETE_CONFIRMATION} {len(self.data_manager.seen_imei)} {IMEIS_QUESTION} {Colors.RESET}").lower()
+        if confirm == 'y' or confirm == '':
             self.data_manager.seen_imei.clear()
             self.data_manager.save_seen_imei()
-            print_success("Seen IMEI list cleared")
+            print_success(SEEN_IMEI_CLEARED)
         else:
-            print_warning("Clear cancelled")
+            print_warning(CLEAR_CANCELLED)
         
         self.return_to_menu()
     
     def reset_all_data(self):
         """Reset all data - delete output files and seen IMEIs"""
-        print_header("RESET ALL DATA")
+        print_header(RESET_ALL_DATA)
         
-        print(f"\n{Colors.BRIGHT_RED}⚠️  This will delete:{Colors.RESET}")
-        print(f"  • CSV file: {CSV_FILE}")
-        print(f"  • Excel file: {BC_FILE}")
-        print(f"  • Seen IMEI list ({len(self.data_manager.seen_imei)} entries)")
+        print(f"\n{Colors.BRIGHT_RED}{WARNING_RESET}{Colors.RESET}")
+        print(f"  • {LABEL_CSV}: {CSV_FILE}")
+        print(f"  • {LABEL_EXCEL}: {BC_FILE}")
+        print(f"  • {LABEL_SEEN_IMEI} ({len(self.data_manager.seen_imei)} {ENTRIES})")
+        print(f"  • {SESSION_WITH_COLOR}: {CSV_FILE_COLOR}, {BC_FILE_COLOR}")
         
-        if input(f"\n{Colors.BRIGHT_YELLOW}Are you sure? (y/n): {Colors.RESET}").lower() == 'y':
+        confirm = input(f"\n{Colors.BRIGHT_YELLOW}{CONFIRM_RESET} {Colors.RESET}").lower()
+        if confirm == 'y' or confirm == '':
             try:
-                # Delete CSV file
-                if os.path.exists(CSV_FILE):
-                    os.remove(CSV_FILE)
-                    print_success(f"Deleted {CSV_FILE}")
+                # Delete CSV files (both sessions)
+                files_to_delete = [
+                    (CSV_FILE, LABEL_CSV),
+                    (BC_FILE, LABEL_EXCEL),
+                    (CSV_FILE_COLOR, f"{LABEL_CSV} ({COLOR_SESSION})"),
+                    (BC_FILE_COLOR, f"{LABEL_EXCEL} ({COLOR_SESSION})")
+                ]
                 
-                # Delete Excel file
-                if os.path.exists(BC_FILE):
-                    os.remove(BC_FILE)
-                    print_success(f"Deleted {BC_FILE}")
+                for file_path, file_label in files_to_delete:
+                    if os.path.exists(file_path):
+                        os.remove(file_path)
+                        print_success(f"{DELETED} {file_label}")
                 
-                # Clear seen IMEIs
+                # Clear seen IMEIs (both sessions)
                 self.data_manager.seen_imei.clear()
                 self.data_manager.save_seen_imei()
-                print_success("Cleared seen IMEI list")
+                self.data_manager.save_seen_imei(color_session=True)
                 
-                print_success("All data has been reset")
+                print_success(ALL_DATA_RESET)
             except Exception as e:
-                print_error(f"Error during reset: {e}")
+                print_error(f"{ERROR_RESET}: {e}")
         else:
-            print_warning("Reset cancelled")
+            print_warning(RESET_CANCELLED)
         
         self.return_to_menu()
     
@@ -436,7 +407,7 @@ class iPhoneScannerApp:
                 self.display_banner()
                 self.display_menu()
                 
-                choice = input(f"\n{Colors.BRIGHT_GREEN}{Icons.SEARCH} Select option (1-10): {Colors.RESET}").strip()
+                choice = input(f"\n{Colors.BRIGHT_GREEN}{Icons.SEARCH} {SELECT_OPTION} (1-10): {Colors.RESET}").strip()
                 
                 if choice == '1':
                     self.monitor_devices(auto_shutdown=False, manual_color=False)
@@ -447,7 +418,7 @@ class iPhoneScannerApp:
                 elif choice == '4':
                     self.monitor_devices(auto_shutdown=True, manual_color=True)
                 elif choice == '5':
-                    self.scan_current_devices()
+                    self.scan_current_devices(manual_color=False)
                 elif choice == '6':
                     self.scan_with_reset()
                 elif choice == '7':
@@ -457,16 +428,16 @@ class iPhoneScannerApp:
                 elif choice == '9':
                     self.reset_all_data()
                 elif choice == '10':
-                    print(f"\n{Colors.BRIGHT_GREEN}{Icons.HEART} Thank you!{Colors.RESET}")
+                    print(f"\n{Colors.BRIGHT_GREEN}{Icons.HEART} {THANK_YOU}{Colors.RESET}")
                     break
                 else:
-                    print_error("Invalid option")
+                    print_error(INVALID_OPTION)
                     time.sleep(1)
                     
             except KeyboardInterrupt:
                 continue
             except Exception as e:
-                print_error(f"Error: {e}")
+                print_error(f"{ERROR_GENERAL}: {e}")
                 time.sleep(2)
 
 if __name__ == "__main__":
@@ -474,8 +445,8 @@ if __name__ == "__main__":
         app = iPhoneScannerApp()
         app.run()
     except KeyboardInterrupt:
-        print(f"\n\n{Colors.BRIGHT_RED}{Icons.STOP} Application terminated{Colors.RESET}")
+        print(f"\n\n{Colors.BRIGHT_RED}{Icons.STOP} {APP_TERMINATED}{Colors.RESET}")
         sys.exit(0)
     except Exception as e:
-        print_error(f"Application error: {e}")
+        print_error(f"{APP_ERROR}: {e}")
         sys.exit(1)

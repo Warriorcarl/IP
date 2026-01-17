@@ -3,23 +3,35 @@ import csv
 import pandas as pd
 import os
 from openpyxl import load_workbook
+from config import CSV_FILE, BC_FILE, CSV_FILE_COLOR, BC_FILE_COLOR
 
 class FileManager:
-    def __init__(self):
-        self.csv_file = 'iphone_data.csv'
-        self.bc_file = 'BC.xlsx'
+    def __init__(self, use_color_session=False):
+        """
+        Initialize FileManager
+        use_color_session: True untuk session dengan warna manual, False untuk session tanpa warna
+        """
+        self.use_color_session = use_color_session
+        
+        if use_color_session:
+            self.csv_file = CSV_FILE_COLOR
+            self.bc_file = BC_FILE_COLOR
+        else:
+            self.csv_file = CSV_FILE
+            self.bc_file = BC_FILE
     
-    def save_device_info(self, device_info: Dict) -> bool:
+    def save_device_info(self, device_info) -> bool:
         """Save device information with color"""
         try:
             self._save_to_csv(device_info)
             self._save_to_bc_excel(device_info)
             return True
         except Exception as e:
-            print_error(f"Save error: {e}")
+            from utils import print_error
+            print_error("Kesalahan simpan: {}".format(str(e)))
             return False
     
-    def _save_to_csv(self, device_info: Dict):
+    def _save_to_csv(self, device_info):
         """Save complete info to CSV"""
         data_row = [
             device_info['imei1'],
@@ -28,7 +40,7 @@ class FileManager:
             device_info['part'],
             device_info['product_name'],
             device_info['storage'],
-            device_info['color'],  # Added color
+            device_info['color'],
             device_info['model_id'],
             device_info['upc'],
             device_info['device_name'],
@@ -51,14 +63,15 @@ class FileManager:
             
             writer.writerow(data_row)
         
-        print_success(f"Saved real data to {self.csv_file}")
+        from utils import print_success
+        print_success("Tersimpan di {}".format(self.csv_file))
     
-    def _save_to_bc_excel(self, device_info: Dict):
+    def _save_to_bc_excel(self, device_info):
         """Save BC data with color"""
         df_new = pd.DataFrame([[
             device_info['product_name'],
             device_info['storage'],
-            device_info['color'],  # Added color
+            device_info['color'],
             device_info['imei1'],
             device_info['imei2']
         ]], columns=['Product Name', 'Storage', 'Color', 'IMEI1', 'IMEI2'])
@@ -75,4 +88,5 @@ class FileManager:
         with pd.ExcelWriter(self.bc_file, engine='openpyxl', mode='w') as writer:
             df_combined.to_excel(writer, sheet_name='BC Data', index=False)
         
-        print_success(f"Saved BC data to {self.bc_file}")
+        from utils import print_success
+        print_success("Tersimpan di {}".format(self.bc_file))

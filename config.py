@@ -23,5 +23,13 @@ PRODUCT_MAPPING = {
 MODEL_MAPPING_FILE = 'model_mapping.json'
 UPC_MAPPING_FILE = 'upc_mapping.json'
 SEEN_IMEI_FILE = 'seen_imei.json'
+
+# Default session (tanpa warna manual)
 CSV_FILE = 'iphone_data.csv'
 BC_FILE = 'BC.xlsx'
+
+# Color session (dengan warna manual)
+CSV_FILE_COLOR = 'iphone_data_color.csv'
+BC_FILE_COLOR = 'BC_color.xlsx'
+
+SEEN_IMEI_FILE_COLOR = 'seen_imei_color.json'
