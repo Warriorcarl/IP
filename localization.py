@@ -224,3 +224,32 @@ CLEAR_SEEN_IMEIS = "HAPUS IMEI TERSIMPAN"
 DELETE_CONFIRMATION = "Hapus semua"
 IMEIS_QUESTION = "IMEI tersimpan? (y/n): "
 ERROR_RESET = "Kesalahan saat reset"
+
+# Trust-related messages (tambahkan di localization.py)
+WAITING_FOR_TRUST = "⏳ Menunggu device melakukan trust..."
+TRUST_INSTRUCTION = "📱 Silakan lakukan 'Trust This Computer' pada iPhone:"
+TRUST_STEP_1 = "1. Buka iPhone yang terhubung"
+TRUST_STEP_2 = "2. Klik 'Trust' ketika muncul popup"
+TRUST_STEP_3 = "3. Masukkan passcode jika diminta"
+CHECKING_TRUST_STATUS = "Memeriksa status trust"
+TRUST_SUCCESS = "✅ Device sudah melakukan trust"
+TRUST_NOT_YET = "⚠️ Device belum trust"
+WAITING_RETRY = "⏱️ Menunggu"
+TRUST_TIMEOUT = "⏰ Timeout: Device tidak melakukan trust"
+DEVICE_NOT_TRUSTED = "Device belum trust komputer ini"
+AUTO_WAITING_TRUST = "⏳ Menunggu device melakukan trust (otomatis)"
+EXTRACTION_FAILED_TRUST = "Ekstraksi gagal: Device belum trust"
+DEVICE_WAITING_TRUST = "Device sedang menunggu trust"
+INSTRUCTION_TRUST_REMINDER = "• Jika muncul popup 'Trust This Computer', klik Trust pada iPhone"
+
+# Untrusted devices handling
+UNTESTED_DEVICES = "Device Belum Trust"
+RETRYING_UNTRUSTED_DEVICES = "Mencoba ulang device yang belum trust"
+RETRYING_DEVICE = "Mencoba ulang device"
+DEVICE_NOW_TRUSTED = "Device sekarang sudah trust"
+DEVICE_STILL_NOT_TRUSTED = "Device masih belum trust"
+CHECKING_UNTRUSTED_DEVICES = "Memeriksa device yang belum trust"
+RETRIED_SUCCESS = "Berhasil mencoba ulang"
+
+# Update version
+VERSION = "Versi"
