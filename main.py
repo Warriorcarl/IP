@@ -6,12 +6,13 @@ import time
 import sys
 import csv
 import platform
+import json
 from datetime import datetime
 
 # Import modules
 from colors import Colors, Icons
 from utils import *
-from config import PRODUCT_MAPPING, CSV_FILE, BC_FILE, CSV_FILE_COLOR, BC_FILE_COLOR
+from config import PRODUCT_MAPPING, CSV_FILE, BC_FILE, CSV_FILE_COLOR, BC_FILE_COLOR, SEEN_IMEI_FILE, SEEN_IMEI_FILE_COLOR
 from data_manager import DataManager
 from file_manager import FileManager
 from storage_extractor import extract_storage_capacity_real
@@ -362,37 +363,85 @@ class iPhoneScannerApp:
         self.return_to_menu()
     
     def reset_all_data(self):
-        """Reset all data - delete output files and seen IMEIs"""
+        """Reset all data - delete ALL files from both sessions"""
         print_header(RESET_ALL_DATA)
         
         print(f"\n{Colors.BRIGHT_RED}{WARNING_RESET}{Colors.RESET}")
-        print(f"  • {LABEL_CSV}: {CSV_FILE}")
-        print(f"  • {LABEL_EXCEL}: {BC_FILE}")
-        print(f"  • {LABEL_SEEN_IMEI} ({len(self.data_manager.seen_imei)} {ENTRIES})")
-        print(f"  • {SESSION_WITH_COLOR}: {CSV_FILE_COLOR}, {BC_FILE_COLOR}")
+        print(f"  • {LABEL_CSV}: {CSV_FILE} ({STANDARD_SESSION})")
+        print(f"  • {LABEL_EXCEL}: {BC_FILE} ({STANDARD_SESSION})")
+        print(f"  • {LABEL_SEEN_IMEI}: {SEEN_IMEI_FILE} ({STANDARD_SESSION})")
+        print(f"  • {SESSION_WITH_COLOR}:")
+        print(f"     - {CSV_FILE_COLOR} ({COLOR_SESSION})")
+        print(f"     - {BC_FILE_COLOR} ({COLOR_SESSION})")
+        print(f"     - {SEEN_IMEI_FILE_COLOR} ({COLOR_SESSION})")
         
         confirm = input(f"\n{Colors.BRIGHT_YELLOW}{CONFIRM_RESET} {Colors.RESET}").lower()
         if confirm == 'y' or confirm == '':
             try:
-                # Delete CSV files (both sessions)
+                # List semua file yang akan dihapus dari kedua sessions
                 files_to_delete = [
-                    (CSV_FILE, LABEL_CSV),
-                    (BC_FILE, LABEL_EXCEL),
+                    # Standard session files
+                    (CSV_FILE, f"{LABEL_CSV} ({STANDARD_SESSION})"),
+                    (BC_FILE, f"{LABEL_EXCEL} ({STANDARD_SESSION})"),
+                    (SEEN_IMEI_FILE, f"{LABEL_SEEN_IMEI} ({STANDARD_SESSION})"),
+                    
+                    # Color session files
                     (CSV_FILE_COLOR, f"{LABEL_CSV} ({COLOR_SESSION})"),
-                    (BC_FILE_COLOR, f"{LABEL_EXCEL} ({COLOR_SESSION})")
+                    (BC_FILE_COLOR, f"{LABEL_EXCEL} ({COLOR_SESSION})"),
+                    (SEEN_IMEI_FILE_COLOR, f"{LABEL_SEEN_IMEI} ({COLOR_SESSION})")
                 ]
                 
+                files_deleted_count = 0
+                files_not_found = []
+                
+                print(f"\n{Colors.BRIGHT_YELLOW}{Icons.INFO} Memulai proses reset...{Colors.RESET}")
+                
+                # Hapus semua file
                 for file_path, file_label in files_to_delete:
                     if os.path.exists(file_path):
-                        os.remove(file_path)
-                        print_success(f"{DELETED} {file_label}")
+                        try:
+                            os.remove(file_path)
+                            files_deleted_count += 1
+                            print_success(f"🗑️  {DELETED} {file_label}")
+                        except Exception as e:
+                            print_error(f"Gagal menghapus {file_label}: {e}")
+                    else:
+                        files_not_found.append(file_label)
+                        print_warning(f"⚠️  {file_label} tidak ditemukan (sudah dihapus atau belum ada)")
                 
-                # Clear seen IMEIs (both sessions)
+                # Clear seen IMEIs in memory
                 self.data_manager.seen_imei.clear()
-                self.data_manager.save_seen_imei()
-                self.data_manager.save_seen_imei(color_session=True)
                 
-                print_success(ALL_DATA_RESET)
+                # Buat file IMEI kosong untuk kedua sessions
+                print(f"\n{Colors.BRIGHT_YELLOW}{Icons.INFO} Membuat file IMEI kosong...{Colors.RESET}")
+                try:
+                    # Standard session
+                    with open(SEEN_IMEI_FILE, 'w') as f:
+                        json.dump([], f, indent=2)
+                    print_success(f"✅ {SEEN_IMEI_FILE} ({STANDARD_SESSION}) dikosongkan")
+                    
+                    # Color session
+                    with open(SEEN_IMEI_FILE_COLOR, 'w') as f:
+                        json.dump([], f, indent=2)
+                    print_success(f"✅ {SEEN_IMEI_FILE_COLOR} ({COLOR_SESSION}) dikosongkan")
+                    
+                except Exception as e:
+                    print_error(f"{ERROR_SAVING_IMEIS}: {e}")
+                
+                # Reload empty IMEI list
+                self.data_manager.seen_imei = self.data_manager.load_seen_imei(color_session=False)
+                
+                # Tampilkan ringkasan
+                print(f"\n{Colors.BRIGHT_CYAN}{'═'*60}{Colors.RESET}")
+                print(f"{Colors.BRIGHT_GREEN}✅ {ALL_DATA_RESET}{Colors.RESET}")
+                print(f"{Colors.BRIGHT_WHITE}📊 Ringkasan Reset:{Colors.RESET}")
+                print(f"  • 📁 File dihapus: {files_deleted_count}")
+                if files_not_found:
+                    print(f"  • ⚠️  File tidak ditemukan: {len(files_not_found)}")
+                print(f"  • 📋 IMEI dalam memori: {len(self.data_manager.seen_imei)}")
+                print(f"  • 🎨 Session diproses: {STANDARD_SESSION} & {COLOR_SESSION}")
+                print(f"{Colors.BRIGHT_CYAN}{'═'*60}{Colors.RESET}")
+                
             except Exception as e:
                 print_error(f"{ERROR_RESET}: {e}")
         else:

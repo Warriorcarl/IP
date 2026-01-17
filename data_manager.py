@@ -187,9 +187,9 @@ class DataManager:
                 ]
             else:
                 files_to_delete = [
-                    (CSV_FILE, LABEL_CSV),
-                    (BC_FILE, LABEL_EXCEL),
-                    (SEEN_IMEI_FILE, LABEL_SEEN_IMEI)
+                    (CSV_FILE, f"{LABEL_CSV} ({STANDARD_SESSION})"),
+                    (BC_FILE, f"{LABEL_EXCEL} ({STANDARD_SESSION})"),
+                    (SEEN_IMEI_FILE, f"{LABEL_SEEN_IMEI} ({STANDARD_SESSION})")
                 ]
             
             files_deleted = []
@@ -200,11 +200,23 @@ class DataManager:
                     os.remove(file_path)
                     files_deleted.append(file_label)
                     print_success(f"{DELETED}: {file_label}")
+                else:
+                    print_warning(f"{file_label} tidak ditemukan")
             
-            # Clear seen IMEI for this session
+            # Clear seen IMEI in memory
             self.seen_imei.clear()
-            self.save_seen_imei(color_session=color_session)
-            print_success(f"{CLEARED_IMEI_LIST} ({COLOR_SESSION if color_session else STANDARD_SESSION})")
+            
+            # Create empty IMEI files
+            try:
+                if color_session:
+                    with open(SEEN_IMEI_FILE_COLOR, 'w') as f:
+                        json.dump([], f)
+                else:
+                    with open(SEEN_IMEI_FILE, 'w') as f:
+                        json.dump([], f)
+                print_success(f"File IMEI {COLOR_SESSION if color_session else STANDARD_SESSION} dikosongkan")
+            except Exception as e:
+                print_error(f"Error creating empty IMEI file: {e}")
             
             # Reload seen IMEI for consistency
             self.seen_imei = self.load_seen_imei(color_session=color_session)

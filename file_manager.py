@@ -1,9 +1,10 @@
-# file_manager.py
+# file_manager.py - VERSION DENGAN LOCALIZATION
 import csv
 import pandas as pd
 import os
-from openpyxl import load_workbook
 from config import CSV_FILE, BC_FILE, CSV_FILE_COLOR, BC_FILE_COLOR
+from localization import *
+from colors import Colors, Icons
 
 class FileManager:
     def __init__(self, use_color_session=False):
@@ -28,7 +29,7 @@ class FileManager:
             return True
         except Exception as e:
             from utils import print_error
-            print_error("Kesalahan simpan: {}".format(str(e)))
+            print_error(f"{ERROR}: {str(e)}")
             return False
     
     def _save_to_csv(self, device_info):
@@ -64,7 +65,7 @@ class FileManager:
             writer.writerow(data_row)
         
         from utils import print_success
-        print_success("Tersimpan di {}".format(self.csv_file))
+        print_success(f"{SAVED_CSV} {self.csv_file}")
     
     def _save_to_bc_excel(self, device_info):
         """Save BC data with color"""
@@ -89,4 +90,4 @@ class FileManager:
             df_combined.to_excel(writer, sheet_name='BC Data', index=False)
         
         from utils import print_success
-        print_success("Tersimpan di {}".format(self.bc_file))
+        print_success(f"{SAVED_EXCEL} {self.bc_file}")

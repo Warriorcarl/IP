@@ -21,6 +21,7 @@ SAVED_IMEIS = "Menyimpan"
 IMEIS_TO = "IMEI ke"
 ERROR_LOADING_IMEIS = "Gagal memuat IMEI"
 ERROR_SAVING_IMEIS = "Gagal menyimpan IMEI"
+ERROR_SAVING = "Gagal menyimpan"
 
 # Reset operations
 CLEARED_IMEI_LIST = "Daftar IMEI dibersihkan"
@@ -167,6 +168,9 @@ DELETED = "✅ Dihapus"
 CLEARED = "✅ Dihapus"
 ALL_DATA_RESET = "✅ Semua data berhasil direset"
 RESET_CANCELLED = "⚠️ Reset dibatalkan"
+ERROR_LOADING = "Gagal memuat"
+NO_FILE_FOUND = "tidak ditemukan"
+IMEI_FILES_CLEARED = "File IMEI dikosongkan"
 
 # Return to Menu
 RETURN_TO_MENU = "Tekan ENTER untuk kembali ke menu..."
