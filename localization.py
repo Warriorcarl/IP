@@ -253,3 +253,31 @@ RETRIED_SUCCESS = "Berhasil mencoba ulang"
 
 # Update version
 VERSION = "Versi"
+
+# Validation messages
+VALIDATION_FAILED = "Validasi gagal: Field penting kosong"
+VALIDATION_SUCCESS = "✅ Validasi data berhasil"
+INVALID_IMEI_FORMAT = "Format IMEI tidak valid"
+SAVE_VALIDATION_FAILED = "Penyimpanan dibatalkan: Validasi gagal"
+DEVICE_NOT_SAVED = "Device tidak disimpan"
+SAVE_CANCELLED = "Penyimpanan dibatalkan"
+
+# Extraction retry messages
+ATTEMPT_EXTRACTION = "Mencoba ekstraksi"
+EXTRACTION_FAILED = "Ekstraksi gagal"
+RETRYING_EXTRACTION = "Mencoba ulang ekstraksi dalam"
+EXTRACTION_MAX_RETRY = "Maksimal percobaan ekstraksi tercapai"
+VALIDATION_MAX_RETRY = "Maksimal percobaan validasi tercapai"
+EXTRACTION_ERROR = "Error saat ekstraksi"
+EXTRACTION_TIMEOUT = "Timeout ekstraksi"
+
+# Failed extractions
+FAILED_EXTRACTIONS = "Ekstraksi Gagal"
+RETRYING_FAILED_EXTRACTIONS = "Mencoba ulang ekstraksi yang gagal"
+RETRY_SUCCESS = "Percobaan ulang berhasil"
+RETRY_FAILED = "Percobaan ulang gagal"
+RETRY_SUCCESS_COUNT = "Berhasil mencoba ulang"
+DEBUG_INFO = "Informasi debug"
+
+# Trust optimization
+WAITING_RETRY = "⏱️ Menunggu"

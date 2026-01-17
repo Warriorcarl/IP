@@ -1,4 +1,4 @@
-# main.py - VERSION TERBARU DENGAN SESSION SEPARATION, LOCALIZATION, DAN TRUST AUTO-RETRY
+# main.py - VERSION 5.4.0 DENGAN TRUST RETRY CEPAT DAN VALIDASI DATA
 import subprocess
 import pandas as pd
 import os
@@ -26,8 +26,9 @@ class DeviceScanner:
         self.connected_devices = set()
         self.device_retry_count = {}
         self.max_retries = 3
-        self.untrusted_devices = set()  # ✅ Menyimpan device yang belum trust
-        self.pending_trust_devices = set()  # ✅ Device yang sedang menunggu trust
+        self.untrusted_devices = set()
+        self.pending_trust_devices = set()
+        self.failed_extractions = set()  # ✅ Device dengan ekstraksi gagal
     
     def get_connected_devices(self):
         """Get list of connected UDIDs"""
@@ -60,7 +61,7 @@ class DeviceScanner:
                 ['ideviceinfo', '-u', udid, '-k', 'DeviceName'],
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=3,  # ✅ Timeout lebih cepat
                 check=False
             )
             
@@ -75,7 +76,7 @@ class DeviceScanner:
                 
                 if "not paired" in error_output or "pairing" in error_output:
                     trust_status['error_type'] = 'not_paired'
-                    trust_status['message'] = f"Device {udid[:8]}... belum dipasangkan (pair)"
+                    trust_status['message'] = f"Device {udid[:8]}... belum dipasangkan"
                 elif "not found" in error_output or "timed out" in error_output:
                     trust_status['error_type'] = 'not_found'
                     trust_status['message'] = f"Device {udid[:8]}... tidak ditemukan"
@@ -84,30 +85,34 @@ class DeviceScanner:
                     trust_status['message'] = f"Device {udid[:8]}... belum trust komputer ini"
                 else:
                     trust_status['error_type'] = 'unknown'
-                    trust_status['message'] = f"Device {udid[:8]}... error: {error_output[:100]}"
+                    trust_status['message'] = f"Device {udid[:8]}... error: {error_output[:50]}"
                     
         except subprocess.TimeoutExpired:
             trust_status['error_type'] = 'timeout'
-            trust_status['message'] = f"Device {udid[:8]}... timeout - mungkin belum trust"
+            trust_status['message'] = f"Device {udid[:8]}... timeout - belum trust"
         except Exception as e:
             trust_status['error_type'] = 'exception'
-            trust_status['message'] = f"Device {udid[:8]}... exception: {str(e)[:100]}"
+            trust_status['message'] = f"Device {udid[:8]}... exception: {str(e)[:50]}"
         
         return trust_status
     
-    def wait_for_device_trust(self, udid: str, max_attempts: int = 30, delay: int = 2) -> bool:
-        """Wait for device to be trusted by user - tanpa prompt tambahan"""
+    def wait_for_device_trust(self, udid: str, max_attempts: int = 20, delay: int = 5) -> bool:
+        """Wait for device to be trusted by user - dengan delay pendek"""
         print_info(f"{WAITING_FOR_TRUST} {udid[:8]}...")
         print(f"{Colors.BRIGHT_YELLOW}{Icons.INFO} {TRUST_INSTRUCTION}{Colors.RESET}")
         print(f"{Colors.DIM}  • {TRUST_STEP_1}")
         print(f"  • {TRUST_STEP_2}")
         print(f"  • {TRUST_STEP_3}{Colors.RESET}")
+        print(f"{Colors.BRIGHT_CYAN}{'─'*60}{Colors.RESET}")
         
         # Tambahkan ke pending list
         self.pending_trust_devices.add(udid)
         
         for attempt in range(1, max_attempts + 1):
-            print(f"{Colors.DIM}[Attempt {attempt}/{max_attempts}] {CHECKING_TRUST_STATUS}...{Colors.RESET}")
+            # Progress bar sederhana
+            progress = int((attempt / max_attempts) * 50)
+            progress_bar = f"[{'█' * progress}{'░' * (50 - progress)}]"
+            print(f"{Colors.DIM}{progress_bar} Attempt {attempt}/{max_attempts}{Colors.RESET}")
             
             trust_status = self.check_device_trust_status(udid)
             
@@ -119,11 +124,12 @@ class DeviceScanner:
                     self.pending_trust_devices.remove(udid)
                 return True
             else:
-                if attempt % 5 == 0:  # Tampilkan pesan setiap 5 percobaan
+                if attempt == 1 or attempt % 3 == 0:  # Tampilkan pesan setiap 3 percobaan
                     print_warning(f"{TRUST_NOT_YET}: {trust_status['message']}")
                 
                 if attempt < max_attempts:
-                    time.sleep(delay)
+                    print_info(f"{WAITING_RETRY} {delay} detik...")
+                    time.sleep(delay)  # ✅ Delay pendek 5 detik
                 else:
                     print_error(f"{TRUST_TIMEOUT} {udid[:8]}...")
                     self.untrusted_devices.add(udid)
@@ -133,14 +139,39 @@ class DeviceScanner:
         
         return False
     
+    def validate_device_info(self, info: dict) -> tuple:
+        """Validasi data device - return (is_valid, error_message)"""
+        critical_fields = [
+            ('imei1', IMEI_1),
+            ('serial', SERIAL),
+            ('product_name', PRODUCT),
+            ('storage', STORAGE)
+        ]
+        
+        missing_fields = []
+        for field_key, field_name in critical_fields:
+            if info.get(field_key) == 'N/A' or not info.get(field_key):
+                missing_fields.append(field_name)
+        
+        if missing_fields:
+            error_msg = f"{VALIDATION_FAILED}: {', '.join(missing_fields)}"
+            return False, error_msg
+        
+        # Validasi IMEI format
+        imei1 = info.get('imei1', '')
+        if imei1 != 'N/A' and len(imei1) != 15:
+            return False, f"{INVALID_IMEI_FORMAT}: {imei1[:15]}"
+        
+        return True, f"{VALIDATION_SUCCESS}"
+    
     def extract_device_info_with_retry(self, udid: str):
-        """Extract device info with automatic trust check and retry"""
+        """Extract device info with trust check and data validation"""
         # Cek apakah device ini sedang menunggu trust
         if udid in self.pending_trust_devices:
             print_info(f"{DEVICE_WAITING_TRUST} {udid[:8]}...")
             # Coba lagi secara otomatis
             if self.wait_for_device_trust(udid):
-                return self.extract_device_info_real(udid)
+                return self.extract_and_validate_device_info(udid)
             else:
                 return None
         
@@ -151,17 +182,69 @@ class DeviceScanner:
             print_warning(f"{DEVICE_NOT_TRUSTED} {udid[:8]}...")
             print(f"{Colors.BRIGHT_YELLOW}{trust_status['message']}{Colors.RESET}")
             
-            # Tunggu device di-trust secara OTOMATIS (tidak tanya user)
+            # Tunggu device di-trust secara OTOMATIS
             print_info(f"{AUTO_WAITING_TRUST} {udid[:8]}...")
             if self.wait_for_device_trust(udid):
-                # Jika sudah trust, ekstrak data
-                return self.extract_device_info_real(udid)
+                # Jika sudah trust, ekstrak dan validasi data
+                return self.extract_and_validate_device_info(udid)
             else:
                 print_error(f"{EXTRACTION_FAILED_TRUST} {udid[:8]}...")
                 return None
         
-        # Jika sudah trust, langsung ekstrak
-        return self.extract_device_info_real(udid)
+        # Jika sudah trust, ekstrak dan validasi data
+        return self.extract_and_validate_device_info(udid)
+    
+    def extract_and_validate_device_info(self, udid: str):
+        """Extract and validate device information"""
+        max_retries = 3
+        retry_delay = 2  # ✅ Delay pendek untuk retry
+        
+        for attempt in range(1, max_retries + 1):
+            print_info(f"{ATTEMPT_EXTRACTION} {attempt}/{max_retries} untuk {udid[:8]}...")
+            
+            info = self.extract_device_info_real(udid)
+            
+            if not info:
+                print_error(f"{EXTRACTION_FAILED} {udid[:8]}...")
+                if attempt < max_retries:
+                    print_info(f"{RETRYING_EXTRACTION} {retry_delay} detik...")
+                    time.sleep(retry_delay)
+                    continue
+                else:
+                    print_error(f"{EXTRACTION_MAX_RETRY} {udid[:8]}...")
+                    self.failed_extractions.add(udid)
+                    return None
+            
+            # Validasi data
+            is_valid, validation_msg = self.validate_device_info(info)
+            
+            if is_valid:
+                print_success(validation_msg)
+                if udid in self.failed_extractions:
+                    self.failed_extractions.remove(udid)
+                return info
+            else:
+                print_error(validation_msg)
+                
+                # Tampilkan data yang didapat untuk debugging
+                print(f"{Colors.BRIGHT_YELLOW}{Icons.INFO} {DEBUG_INFO}:{Colors.RESET}")
+                critical_fields = ['imei1', 'imei2', 'serial', 'product_name', 'storage']
+                for field in critical_fields:
+                    value = info.get(field, 'N/A')
+                    if value == 'N/A' or not value:
+                        print(f"  • {field}: {Colors.BRIGHT_RED}{value}{Colors.RESET}")
+                    else:
+                        print(f"  • {field}: {Colors.BRIGHT_GREEN}{value}{Colors.RESET}")
+                
+                if attempt < max_retries:
+                    print_warning(f"{RETRYING_EXTRACTION} {retry_delay} detik...")
+                    time.sleep(retry_delay)
+                else:
+                    print_error(f"{VALIDATION_MAX_RETRY} {udid[:8]}...")
+                    self.failed_extractions.add(udid)
+                    return None
+        
+        return None
     
     def extract_device_info_real(self, udid: str):
         """Extract REAL device information"""
@@ -169,16 +252,17 @@ class DeviceScanner:
         start_time = time.time()
         
         try:
-            # Get device info
+            # Get device info dengan timeout lebih pendek
             result = subprocess.run(
                 ['ideviceinfo', '-u', udid],
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=10
+                timeout=8  # ✅ Timeout lebih pendek
             )
             
             if result.returncode != 0:
+                print_error(f"{EXTRACTION_ERROR} {udid[:8]}...")
                 return None
             
             # Parse device info
@@ -194,7 +278,6 @@ class DeviceScanner:
             
             if imei1 == 'N/A':
                 print_warning(WARNING_IMEI_NOT_ACCESSIBLE)
-                return None
             
             # Get basic info
             serial = device_info.get('SerialNumber', 'N/A')
@@ -238,6 +321,9 @@ class DeviceScanner:
             print_success(f"{EXTRACTION_COMPLETED} {elapsed_time:.2f}s")
             return info
             
+        except subprocess.TimeoutExpired:
+            print_error(f"{EXTRACTION_TIMEOUT} {udid[:8]}...")
+            return None
         except Exception as e:
             print_error(f"{ERROR_EXTRACTION}: {e}")
             return None
@@ -274,27 +360,55 @@ class DeviceScanner:
                     print_warning(f"{DEVICE_STILL_NOT_TRUSTED} {udid[:8]}...")
         
         return retried
+    
+    def retry_failed_extractions(self):
+        """Retry extraction for previously failed devices"""
+        retried = []
+        if self.failed_extractions:
+            print_info(f"{RETRYING_FAILED_EXTRACTIONS} {len(self.failed_extractions)} device(s)...")
+            
+            for udid in list(self.failed_extractions):
+                print_info(f"{RETRYING_DEVICE} {udid[:8]}...")
+                
+                # Cek trust status dulu
+                trust_status = self.check_device_trust_status(udid)
+                
+                if trust_status['is_trusted']:
+                    # Jika sudah trust, coba ekstrak lagi
+                    info = self.extract_and_validate_device_info(udid)
+                    if info:
+                        print_success(f"{RETRY_SUCCESS} {udid[:8]}...")
+                        self.failed_extractions.remove(udid)
+                        retried.append((udid, info))
+                    else:
+                        print_warning(f"{RETRY_FAILED} {udid[:8]}...")
+                else:
+                    print_warning(f"{DEVICE_STILL_NOT_TRUSTED} {udid[:8]}...")
+        
+        return retried
 
 class iPhoneScannerApp:
     def __init__(self):
         self.data_manager = DataManager()
         self.device_scanner = DeviceScanner(self.data_manager)
-        # FileManager akan diinisialisasi sesuai session type
         self.file_manager = None
         self.running = False
     
     def display_banner(self):
         """Display application banner"""
         clear_screen()
-        print_header(f"{APP_TITLE} v5.3.0", 80)
-        print(f"\n{Colors.BRIGHT_CYAN}{Icons.DEVICE}  {VERSION}: 5.3.0 - Real Data Only")
+        print_header(f"{APP_TITLE} v5.4.0", 80)
+        print(f"\n{Colors.BRIGHT_CYAN}{Icons.DEVICE}  {VERSION}: 5.4.0 - Enhanced Validation")
         print(f"{Icons.COMPUTER}  {SYSTEM}: {platform.system()} {platform.release()}")
         print(f"{Icons.CLOCK}  {TIME}: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print(f"{Icons.LIST}  {SEEN_IMEIS}: {len(self.data_manager.seen_imei)}")
         
-        # Tampilkan status untrusted devices jika ada
+        # Tampilkan status devices
         if self.device_scanner.untrusted_devices:
             print(f"{Colors.BRIGHT_YELLOW}{Icons.WARNING}  {UNTESTED_DEVICES}: {len(self.device_scanner.untrusted_devices)}{Colors.RESET}")
+        
+        if self.device_scanner.failed_extractions:
+            print(f"{Colors.BRIGHT_RED}{Icons.ERROR}  {FAILED_EXTRACTIONS}: {len(self.device_scanner.failed_extractions)}{Colors.RESET}")
         
         # Tampilkan kedua session files
         print(f"{Icons.SAVE}  {SESSION_FILES}:")
@@ -308,7 +422,6 @@ class iPhoneScannerApp:
         print(f"\n{Colors.BRIGHT_WHITE}{Icons.LIST}  {MENU_TITLE}{Colors.RESET}")
         print(f"{Colors.BRIGHT_CYAN}{'─'*50}{Colors.RESET}")
         
-        # Menggunakan MENU_OPTIONS dari localization.py
         for key in sorted(MENU_OPTIONS.keys(), key=lambda x: int(x)):
             title, desc = MENU_OPTIONS[key]
             print(f"{Colors.BRIGHT_GREEN}[{key}]{Colors.RESET} {Colors.BOLD}{title:<30}{Colors.RESET} {Colors.DIM}{desc}{Colors.RESET}")
@@ -334,11 +447,19 @@ class iPhoneScannerApp:
         for i, udid in enumerate(devices, 1):
             print(f"\n{Colors.BRIGHT_WHITE}{Icons.DEVICE} [{i}/{len(devices)}] {SCANNING_DEVICE} {udid[:8]}...{Colors.RESET}")
             
-            # Gunakan fungsi baru dengan auto-retry untuk trust
+            # Gunakan fungsi baru dengan auto-retry dan validasi
             info = self.device_scanner.extract_device_info_with_retry(udid)
             
             if info:
                 print_device_info(info)
+                
+                # Validasi final sebelum menyimpan
+                is_valid, validation_msg = self.device_scanner.validate_device_info(info)
+                
+                if not is_valid:
+                    print_error(f"{SAVE_VALIDATION_FAILED}: {validation_msg}")
+                    print_warning(f"{DEVICE_NOT_SAVED} {udid[:8]}...")
+                    continue
                 
                 if info['imei1'] != 'N/A' and info['imei1'] not in self.data_manager.seen_imei:
                     if manual_color:
@@ -360,11 +481,13 @@ class iPhoneScannerApp:
                                 self.data_manager.save_seen_imei()
                             
                             print_success(DEVICE_SAVED)
+                    else:
+                        print_warning(f"{SAVE_CANCELLED} {udid[:8]}...")
         
         self.return_to_menu()
     
     def monitor_devices_with_retry(self, auto_shutdown: bool = False, manual_color: bool = False):
-        """Monitor for device connections with automatic trust retry"""
+        """Monitor for device connections with automatic trust retry and validation"""
         self.running = True
         
         # Inisialisasi FileManager dengan session type
@@ -405,12 +528,20 @@ class iPhoneScannerApp:
             while self.running:
                 current_time = time.time()
                 
-                # Retry untrusted devices setiap 30 detik
-                if current_time - last_retry_time > 30 and self.device_scanner.untrusted_devices:
-                    print_info(f"{CHECKING_UNTRUSTED_DEVICES}...")
-                    retried = self.device_scanner.retry_untrusted_devices()
-                    if retried:
-                        print_success(f"{RETRIED_SUCCESS} {len(retried)} device(s)")
+                # Retry untrusted dan failed devices setiap 10 detik
+                if current_time - last_retry_time > 10:
+                    if self.device_scanner.untrusted_devices:
+                        print_info(f"{CHECKING_UNTRUSTED_DEVICES}...")
+                        retried = self.device_scanner.retry_untrusted_devices()
+                        if retried:
+                            print_success(f"{RETRIED_SUCCESS} {len(retried)} device(s)")
+                    
+                    if self.device_scanner.failed_extractions:
+                        print_info(f"{RETRYING_FAILED_EXTRACTIONS}...")
+                        retried = self.device_scanner.retry_failed_extractions()
+                        if retried:
+                            print_success(f"{RETRY_SUCCESS_COUNT} {len(retried)} device(s)")
+                    
                     last_retry_time = current_time
                 
                 current_devices = self.device_scanner.get_connected_devices()
@@ -419,12 +550,20 @@ class iPhoneScannerApp:
                 for udid in new_devices:
                     print_success(f"{NEW_DEVICE_DETECTED} {udid[:8]}...")
                     
-                    # Gunakan extract dengan auto-retry untuk trust
+                    # Gunakan extract dengan auto-retry dan validasi
                     info = self.device_scanner.extract_device_info_with_retry(udid)
                     
-                    if info and info['imei1'] != 'N/A':
+                    if info:
+                        # Validasi data
+                        is_valid, validation_msg = self.device_scanner.validate_device_info(info)
+                        
+                        if not is_valid:
+                            print_error(f"{SAVE_VALIDATION_FAILED}: {validation_msg}")
+                            print_warning(f"{SKIPPING_DEVICE} {udid[:8]}...")
+                            continue
+                        
                         # Check if IMEI already exists
-                        if info['imei1'] in self.data_manager.seen_imei:
+                        if info['imei1'] != 'N/A' and info['imei1'] in self.data_manager.seen_imei:
                             print_warning(DEVICE_ALREADY_SCANNED)
                             print(f"{Colors.BRIGHT_YELLOW}")
                             print(f"{'─'*60}")
@@ -447,11 +586,12 @@ class iPhoneScannerApp:
                             
                             if self.file_manager.save_device_info(info):
                                 # Simpan IMEI ke session yang sesuai
-                                self.data_manager.seen_imei.add(info['imei1'])
-                                if manual_color:
-                                    self.data_manager.save_seen_imei(color_session=True)
-                                else:
-                                    self.data_manager.save_seen_imei()
+                                if info['imei1'] != 'N/A':
+                                    self.data_manager.seen_imei.add(info['imei1'])
+                                    if manual_color:
+                                        self.data_manager.save_seen_imei(color_session=True)
+                                    else:
+                                        self.data_manager.save_seen_imei()
                                 
                                 print_success(DEVICE_SAVED)
                             
@@ -536,14 +676,10 @@ class iPhoneScannerApp:
         confirm = input(f"\n{Colors.BRIGHT_YELLOW}{CONFIRM_RESET} {Colors.RESET}").lower()
         if confirm == 'y' or confirm == '':
             try:
-                # List semua file yang akan dihapus dari kedua sessions
                 files_to_delete = [
-                    # Standard session files
                     (CSV_FILE, f"{LABEL_CSV} ({STANDARD_SESSION})"),
                     (BC_FILE, f"{LABEL_EXCEL} ({STANDARD_SESSION})"),
                     (SEEN_IMEI_FILE, f"{LABEL_SEEN_IMEI} ({STANDARD_SESSION})"),
-                    
-                    # Color session files
                     (CSV_FILE_COLOR, f"{LABEL_CSV} ({COLOR_SESSION})"),
                     (BC_FILE_COLOR, f"{LABEL_EXCEL} ({COLOR_SESSION})"),
                     (SEEN_IMEI_FILE_COLOR, f"{LABEL_SEEN_IMEI} ({COLOR_SESSION})")
@@ -554,7 +690,6 @@ class iPhoneScannerApp:
                 
                 print(f"\n{Colors.BRIGHT_YELLOW}{Icons.INFO} Memulai proses reset...{Colors.RESET}")
                 
-                # Hapus semua file
                 for file_path, file_label in files_to_delete:
                     if os.path.exists(file_path):
                         try:
@@ -565,23 +700,20 @@ class iPhoneScannerApp:
                             print_error(f"Gagal menghapus {file_label}: {e}")
                     else:
                         files_not_found.append(file_label)
-                        print_warning(f"⚠️  {file_label} tidak ditemukan (sudah dihapus atau belum ada)")
                 
-                # Clear seen IMEIs in memory
+                # Clear semua data dalam memori
                 self.data_manager.seen_imei.clear()
-                # Clear untrusted devices list
                 self.device_scanner.untrusted_devices.clear()
                 self.device_scanner.pending_trust_devices.clear()
+                self.device_scanner.failed_extractions.clear()
                 
-                # Buat file IMEI kosong untuk kedua sessions
+                # Buat file IMEI kosong
                 print(f"\n{Colors.BRIGHT_YELLOW}{Icons.INFO} Membuat file IMEI kosong...{Colors.RESET}")
                 try:
-                    # Standard session
                     with open(SEEN_IMEI_FILE, 'w') as f:
                         json.dump([], f, indent=2)
                     print_success(f"✅ {SEEN_IMEI_FILE} ({STANDARD_SESSION}) dikosongkan")
                     
-                    # Color session
                     with open(SEEN_IMEI_FILE_COLOR, 'w') as f:
                         json.dump([], f, indent=2)
                     print_success(f"✅ {SEEN_IMEI_FILE_COLOR} ({COLOR_SESSION}) dikosongkan")
@@ -620,7 +752,6 @@ class iPhoneScannerApp:
                 choice = input(f"\n{Colors.BRIGHT_GREEN}{Icons.SEARCH} {SELECT_OPTION} (1-10): {Colors.RESET}").strip()
                 
                 if choice == '1':
-                    # Gunakan fungsi baru dengan trust auto-retry
                     self.monitor_devices_with_retry(auto_shutdown=False, manual_color=False)
                 elif choice == '2':
                     self.monitor_devices_with_retry(auto_shutdown=False, manual_color=True)
