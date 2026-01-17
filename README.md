@@ -28,18 +28,21 @@ iPhone Device Scanner Pro is a powerful command-line application for extracting 
 - **🛑 Auto-Shutdown** - Optional automatic device shutdown after data extraction
 - **📋 IMEI Tracking** - Maintains history of processed devices
 - **🎨 Beautiful CLI Interface** - Color-coded, emoji-enhanced terminal UI
+- **🎨 Manual Color Selection** - Choose from official Apple colors for each device
 
 ## 📋 Main Menu Options
 
 ```
-[1] 📱 Monitor & Extract       Extract info from new devices
-[2] 📱⏻ Monitor + Shutdown     Extract then shutdown device
-[3] 🔍 Scan Current Devices    Scan all connected devices
-[4] 🔍🔄 Scan with Reset        Reset data first, then scan
-[5] 📋 View Seen IMEIs         Show all processed IMEIs
-[6] 🗑️  Clear Seen IMEIs       Reset seen IMEI list
-[7] 🗑️  Reset All Data         Delete all output files and IMEI list
-[8] 🚪 Exit                    Close application
+[1] 📱 Monitor & Extract              Extract info (auto-detect color)
+[2] 🎨 Monitor & Extract + Color      Extract + manual color selection
+[3] 📱⏻ Monitor + Shutdown            Extract then shutdown device
+[4] 🎨 Monitor + Shutdown + Color     Extract + color + shutdown
+[5] 🔍 Scan Current Devices           Scan all connected devices
+[6] 🔍🔄 Scan with Reset              Reset data first, then scan
+[7] 📋 View Seen IMEIs                Show all processed IMEIs
+[8] 🗑️  Clear Seen IMEIs              Reset seen IMEI list
+[9] 🗑️  Reset All Data                Delete all output files and IMEI list
+[10] 🚪 Exit                          Close application
 ```
 
 ## 🚀 Getting Started
@@ -110,7 +113,10 @@ Advanced storage capacity detection using multiple methods:
 - Intelligent capacity rounding
 
 ### color_detector.py
-Device color detection with comprehensive color mapping for all iPhone models.
+Deprecated - manual color selection is now used instead.
+
+### color_selector.py
+Manual color selection for all iPhone models. Contains database of official Apple colors for each device model with user-friendly menu selection interface.
 
 ## 📊 Output Format
 
@@ -143,10 +149,55 @@ Select option: 2
 
 ### View Processed Devices
 ```
-Select option: 5
+Select option: 7
 - Displays all IMEI numbers that have been processed
 - Useful for tracking which devices have been scanned
 ```
+
+## 🎨 Manual Color Selection
+
+When selecting menu option 2 or 4 (with color selection), the application will:
+
+1. Extract device information as usual
+2. Display a color selection menu with all official Apple colors for that model
+3. User selects color by entering a number (1-N)
+4. Selected color is automatically saved to CSV and Excel files
+5. No confirmation needed - color is saved immediately after selection
+
+### Example Color Selection
+
+**For iPhone 15:**
+```
+============================================================
+🎨 SELECT DEVICE COLOR
+============================================================
+
+📱 Product: iPhone 15
+
+[1] Black
+[2] Blue
+[3] Green
+[4] Yellow
+[5] Pink
+
+🎨 Select color (1-5): 3
+✅ Selected: Green
+```
+
+### Supported Colors by Model
+
+The application supports all official Apple colors:
+- iPhone 7/7 Plus: Jet Black, Black, Silver, Gold, Rose Gold, Red
+- iPhone X/XS: Space Gray, Silver, Gold
+- iPhone XR: White, Black, Blue, Yellow, Coral, Red
+- iPhone 11: White, Black, Green, Yellow, Purple, Red
+- iPhone 12/12 Pro: Various official colors
+- iPhone 13/13 Pro: Starlight, Midnight, Sierra Blue, Alpine Green, etc.
+- iPhone 14/14 Pro: Space Black, Deep Purple, etc.
+- iPhone 15/15 Pro: Titanium variants, standard colors
+- iPhone 16/16 Pro: Latest 2024 colors and titanium finishes
+
+**Note:** "RED" is displayed without the "PRODUCT" prefix for clarity.
 
 ## ⚙️ Configuration
 

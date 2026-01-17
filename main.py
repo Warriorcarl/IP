@@ -14,6 +14,7 @@ from config import PRODUCT_MAPPING, CSV_FILE, BC_FILE
 from data_manager import DataManager
 from storage_extractor import extract_storage_capacity_real
 from color_detector import extract_device_color
+from color_selector import display_color_selection
 
 class DeviceScanner:
     def __init__(self, data_manager):
@@ -229,18 +230,21 @@ class iPhoneScannerApp:
         print(f"{Colors.BRIGHT_CYAN}{'─'*50}{Colors.RESET}")
         
         menu_options = [
-            ("1", "📱 Monitor & Extract", "Extract info from new devices"),
-            ("2", "📱⏻ Monitor + Shutdown", "Extract then shutdown device"),
-            ("3", "🔍 Scan Current Devices", "Scan all connected devices"),
-            ("4", "🔍🔄 Scan with Reset", "Reset data first, then scan"),
-            ("5", "📋 View Seen IMEIs", "Show all processed IMEIs"),
-            ("6", "🗑️  Clear Seen IMEIs", "Reset seen IMEI list"),
-            ("7", "🗑️  Reset All Data", "Delete all output files and IMEI list"),
-            ("8", "🚪 Exit", "Close application")
+            ("1", "📱 Monitor & Extract", "Extract info (auto-detect color)"),
+            ("2", "🎨 Monitor & Extract + Color", "Extract + manual color selection"),
+            ("3", "📱⏻ Monitor + Shutdown", "Extract then shutdown device"),
+            ("4", "🎨 Monitor + Shutdown + Color", "Extract + color + shutdown"),
+            ("5", "🔍 Scan Current Devices", "Scan all connected devices"),
+            ("6", "🔍🔄 Scan with Reset", "Reset data first, then scan"),
+            ("7", "📋 View Seen IMEIs", "Show all processed IMEIs"),
+            ("8", "🗑️  Clear Seen IMEIs", "Reset seen IMEI list"),
+            ("9", "🗑️  Reset All Data", "Delete all output files and IMEI list"),
+            ("10", "🚪 Exit", "Close application")
         ]
         
         for num, title, desc in menu_options:
-            print(f"{Colors.BRIGHT_GREEN}[{num}]{Colors.RESET} {Colors.BOLD}{title:<25}{Colors.RESET} {Colors.DIM}{desc}{Colors.RESET}")
+            print(f"{Colors.BRIGHT_GREEN}[{num}]{Colors.RESET} {Colors.BOLD}{title:<30}{Colors.RESET} {Colors.DIM}{desc}{Colors.RESET}")
+        
         
         print(f"{Colors.BRIGHT_CYAN}{'─'*50}{Colors.RESET}")
     
@@ -252,6 +256,7 @@ class iPhoneScannerApp:
         if not devices:
             print_warning("No devices connected")
             time.sleep(2)
+            self.return_to_menu()
             return
         
         print_success(f"Found {len(devices)} device(s)")
@@ -270,16 +275,24 @@ class iPhoneScannerApp:
                         self.data_manager.save_seen_imei()
                         print_success(f"{Icons.TROPHY} DEVICE SAVED!")
         
-        input(f"\n{Colors.BRIGHT_CYAN}Press Enter to continue...{Colors.RESET}")
+        self.return_to_menu()
     
-    def monitor_devices(self, auto_shutdown: bool = False):
+    def monitor_devices(self, auto_shutdown: bool = False, manual_color: bool = False):
         """Monitor for device connections"""
         self.running = True
         
-        print_header(f"DEVICE MONITORING {'+ SHUTDOWN' if auto_shutdown else ''}")
+        mode_text = ""
+        if manual_color:
+            mode_text += " + MANUAL COLOR"
+        if auto_shutdown:
+            mode_text += " + SHUTDOWN"
+        
+        print_header(f"DEVICE MONITORING{mode_text}")
         print(f"\n{Colors.BRIGHT_WHITE}{Icons.INFO}  Instructions:{Colors.RESET}")
         print(f"{Colors.DIM}  • Connect new iPhone via USB")
         print(f"  • Information will be automatically extracted")
+        if manual_color:
+            print(f"  • You will be prompted to select device color")
         print(f"  • Press Ctrl+C to stop{Colors.RESET}")
         print(f"\n{Colors.BRIGHT_CYAN}{'─'*80}{Colors.RESET}")
         
@@ -311,6 +324,12 @@ class iPhoneScannerApp:
                         else:
                             # New device - process it
                             print_device_info(info)
+                            
+                            # Manual color selection if enabled
+                            if manual_color:
+                                selected_color = display_color_selection(info['product_name'])
+                                info['color'] = selected_color
+                            
                             self.file_manager.save_device_info(info)
                             self.data_manager.seen_imei.add(info['imei1'])
                             self.data_manager.save_seen_imei()
@@ -325,6 +344,15 @@ class iPhoneScannerApp:
         except KeyboardInterrupt:
             print(f"\n\n{Colors.BRIGHT_YELLOW}{Icons.STOP} Monitoring stopped{Colors.RESET}")
             self.running = False
+        
+        # Return to menu
+        self.return_to_menu()
+    
+    def return_to_menu(self):
+        """Prompt user to return to menu"""
+        print(f"\n{Colors.BRIGHT_CYAN}{'─'*80}{Colors.RESET}")
+        input(f"{Colors.BRIGHT_GREEN}Press ENTER to return to menu...{Colors.RESET}")
+        print(f"{Colors.BRIGHT_CYAN}{'─'*80}{Colors.RESET}\n")
     
     def scan_with_reset(self):
         """Scan current devices after resetting seen IMEIs"""
@@ -338,6 +366,7 @@ class iPhoneScannerApp:
             self.scan_current_devices()
         else:
             print_warning("Scan with reset cancelled")
+            self.return_to_menu()
             time.sleep(1)
     
     def view_seen_imeis(self):
@@ -351,7 +380,7 @@ class iPhoneScannerApp:
             for i, imei in enumerate(sorted(self.data_manager.seen_imei), 1):
                 print(f"{Colors.BRIGHT_GREEN}[{i:3d}]{Colors.RESET} {imei}")
         
-        input(f"\n{Colors.BRIGHT_CYAN}Press Enter to continue...{Colors.RESET}")
+        self.return_to_menu()
     
     def clear_seen_imeis(self):
         """Clear the seen IMEIs list"""
@@ -364,7 +393,7 @@ class iPhoneScannerApp:
         else:
             print_warning("Clear cancelled")
         
-        time.sleep(2)
+        self.return_to_menu()
     
     def reset_all_data(self):
         """Reset all data - delete output files and seen IMEIs"""
@@ -398,7 +427,7 @@ class iPhoneScannerApp:
         else:
             print_warning("Reset cancelled")
         
-        time.sleep(2)
+        self.return_to_menu()
     
     def run(self):
         """Main application loop"""
@@ -407,23 +436,27 @@ class iPhoneScannerApp:
                 self.display_banner()
                 self.display_menu()
                 
-                choice = input(f"\n{Colors.BRIGHT_GREEN}{Icons.SEARCH} Select option (1-8): {Colors.RESET}").strip()
+                choice = input(f"\n{Colors.BRIGHT_GREEN}{Icons.SEARCH} Select option (1-10): {Colors.RESET}").strip()
                 
                 if choice == '1':
-                    self.monitor_devices(auto_shutdown=False)
+                    self.monitor_devices(auto_shutdown=False, manual_color=False)
                 elif choice == '2':
-                    self.monitor_devices(auto_shutdown=True)
+                    self.monitor_devices(auto_shutdown=False, manual_color=True)
                 elif choice == '3':
-                    self.scan_current_devices()
+                    self.monitor_devices(auto_shutdown=True, manual_color=False)
                 elif choice == '4':
-                    self.scan_with_reset()
+                    self.monitor_devices(auto_shutdown=True, manual_color=True)
                 elif choice == '5':
-                    self.view_seen_imeis()
+                    self.scan_current_devices()
                 elif choice == '6':
-                    self.clear_seen_imeis()
+                    self.scan_with_reset()
                 elif choice == '7':
-                    self.reset_all_data()
+                    self.view_seen_imeis()
                 elif choice == '8':
+                    self.clear_seen_imeis()
+                elif choice == '9':
+                    self.reset_all_data()
+                elif choice == '10':
                     print(f"\n{Colors.BRIGHT_GREEN}{Icons.HEART} Thank you!{Colors.RESET}")
                     break
                 else:
